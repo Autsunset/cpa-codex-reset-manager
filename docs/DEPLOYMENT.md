@@ -21,3 +21,16 @@ If a host restart is required, arrange it from an independent control session.
 New API does not need any restart. Rollback consists of disabling the new reset
 policies and restoring the old plugin configuration after confirming that no
 new redemption is pending. Preserve both plugins' histories for reconciliation.
+
+## Subsequent hot updates
+
+Install a verified, versioned library filename and toggle only this plugin off
+and back on through CPA's plugin-management API. Saving an already-true enabled
+flag may not activate a newly placed file. The off/on transition drains this
+plugin before loading the new version; CPA and New API do not need a restart.
+
+Back up settings.json and runtime.json before updating. Once notification
+channels have been configured, also back up notifications.json and
+notification-log.json. Keep credentials private. Check that reset policy bytes
+are unchanged and that the notification channels remain in their prior state.
+Do not perform real redemptions or send real test messages during deployment.

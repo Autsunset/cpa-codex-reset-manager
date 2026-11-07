@@ -78,6 +78,7 @@ type Notice struct {
 	Message    string    `json:"message"`
 	Remaining  float64   `json:"remaining"`
 	Rate       float64   `json:"rate_per_hour"`
+	RateKnown  bool      `json:"rate_known"`
 	TargetRate float64   `json:"target_per_hour"`
 	Deadline   time.Time `json:"deadline"`
 }
@@ -87,7 +88,7 @@ func notices(id string, r Runtime, p Policy, s Settings, now time.Time) []Notice
 	if !p.Monitor {
 		return out
 	}
-	if r.Current.At.IsZero() || now.Sub(r.Current.At) > time.Duration(s.PollMinutes*3)*time.Minute {
+	if r.Error != "" || r.Current.At.IsZero() || now.Sub(r.Current.At) > time.Duration(s.PollMinutes*3)*time.Minute {
 		return []Notice{{Account: id, Kind: "stale", Message: "额度数据过期或尚未采样，暂不判断用量速度 / Stale or missing quota data"}}
 	}
 	for _, w := range r.Current.Windows {
@@ -105,16 +106,9 @@ func notices(id string, r Runtime, p Policy, s Settings, now time.Time) []Notice
 		n := Notice{Account: id, Window: w.Name, Remaining: 100 - w.Used, Deadline: deadline}
 		hours := deadline.Sub(now).Hours()
 		n.TargetRate = n.Remaining / hours
-		dt := r.Current.At.Sub(r.Previous.At)
-		known := false
-		if dt >= time.Minute && dt <= time.Duration(s.PollMinutes*3)*time.Minute {
-			for _, old := range r.Previous.Windows {
-				if old.Name == w.Name && old.Seconds == w.Seconds && old.ResetAt.Equal(w.ResetAt) && w.Used >= old.Used {
-					n.Rate = (w.Used - old.Used) / dt.Hours()
-					known = true
-				}
-			}
-		}
+		rate, known := recentRate(r, w, s)
+		n.Rate = rate
+		n.RateKnown = known
 		switch {
 		case w.Used >= 99:
 			n.Kind = "slow_down"
@@ -207,6 +201,7 @@ func process(s *Store, id string, p Policy, c CodexCredentials, b Backend, now t
 		return s.saveRuntime()
 	}
 	r.Previous, r.Current, r.Error = r.Current, reading, ""
+	appendHistory(&r, reading)
 	if r.Attempt != nil {
 		a := r.Attempt
 		available := false

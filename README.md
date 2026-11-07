@@ -14,7 +14,7 @@ Auto follows the containing management panel when its theme is accessible,
 otherwise the system setting. Both choices are remembered in this browser;
 switching them preserves unsaved settings.
 
-Version: **0.3.0**. This is an independent plugin, not an upgrade package for
+Version: **0.4.0**. This is an independent plugin, not an upgrade package for
 `codex-auto-reset`. MIT licensed.
 
 ## Features
@@ -37,7 +37,8 @@ Version: **0.3.0**. This is an independent plugin, not an upgrade package for
   credit. Missing credit, count decrease, and quota recovery must agree.
 - Corrupt state prevents startup; journal write failures stop further automatic
   processing until reload. Neither silently resets consent or redemption history.
-- Pace estimates use two recent observations from the same quota window.
+- Pace estimates use at least two continuous observations from up to the last
+  hour in the same quota window.
   Five-hour and weekly limits are assessed separately. A constrained window
   suppresses encouragement to accelerate. Stale data disables predictions.
 - Browser notifications are opt-in, limited to once per account/window/kind/
@@ -53,6 +54,47 @@ quota percentage points per hour, not a guaranteed token budget. Spark and code
 review pools are intentionally excluded from the main-window pace calculation.
 The seven-day exhaustion policy does not wait for all other CPA accounts to
 exhaust; that Magpie routing behavior is not available to this management plugin.
+
+## Curves and server-side notifications
+
+The overview shows observed remaining quota, an exhaustion estimate and the reset
+countdown together. Its interactive curve compares real samples with a recent-pace
+projection and a budget line that evenly uses the current balance until reset.
+Select an account, quota window, and 6-hour / 24-hour / 7-day / 14-day history range.
+Hover, touch, or use arrow keys to inspect points. Reset boundaries and collection
+gaps break the observed line. Predictions use continuous samples from up to the
+last hour and stop when data is stale. These are percentage-based scenarios, not
+fixed Token or currency capacities.
+
+History is persisted for up to 14 days, capped at 4,096 samples per account. On
+upgrade, the two readings retained by earlier versions are preserved; older
+history cannot be reconstructed. No model requests are generated for charts.
+
+**Server-side notifications** work with the browser closed. Channels are disabled
+by default. Enabling a channel and saving authorizes real matching alerts; there
+is deliberately no real-message test button.
+
+- **Email:** one SMTP sender and 1–50 recipients, entered one per line or separated
+  by commas. Each recipient gets a separate message and cannot see the others.
+  Up to four deliveries run concurrently. Configure the SMTP host, port, username,
+  password/app password and sender. Implicit TLS (usually 465) and STARTTLS
+  (usually 587) require certificate verification; plaintext SMTP is not supported.
+- **Generic HTTPS webhook:** receives JSON with `id`, `title`, `text`, and `notice`,
+  plus an `Idempotency-Key` header. Use a compatible receiver or automation adapter
+  for chat bots. A 2xx response acknowledges delivery; redirects are not followed.
+- Choose usage-too-fast, unused-quota risk, upcoming natural reset, credit expiry,
+  and/or stale-data alerts. The reminder horizon uses the existing reminder-hours
+  setting. Notification language is independently selectable.
+- A persistent per-account/window/condition/destination journal enforces the
+  configured cooldown (default six hours). Failed recipients retry after ten
+  minutes; confirmed successes are not resent during their cooldown. Unknown
+  delivery outcomes wait for the full cooldown. Email cannot guarantee exactly-once
+  delivery when acknowledgements are lost; stable Message-IDs aid reconciliation.
+- Delivery records are kept for 30 days. SMTP passwords and webhook URLs are
+  write-only in the management API. Blank secret fields preserve saved values;
+  explicit clear controls remove them. Files use mode 0600 on Unix, and credentials
+  are never stored in browser localStorage. Notification settings are in
+  `notifications.json`, and delivery history in `notification-log.json`.
 
 ## Installation
 
@@ -74,7 +116,9 @@ volumes:
 ```
 
 For desktop installations, set `data_dir` to an absolute writable directory.
-Keep both JSON files together when backing up or migrating. Changing the
+Keep `settings.json` and `runtime.json` together when backing up or migrating.
+After configuring notifications, include `notifications.json` and
+`notification-log.json` too. An enabled channel requires its journal on startup. Changing the
 directory during a live reload is rejected; stop the host, copy both files, then
 change the path. Removing the persistent volume also removes the settings.
 
@@ -110,6 +154,9 @@ All management routes are protected by the host's Management Key:
 | Method | Path under `/v0/management/cpa-codex-reset-manager` | Purpose |
 |---|---|---|
 | GET | `/status` | Settings, accounts, snapshots, notices, journal, activity |
+| GET | `/history?account=<key>&hours=24` | Observed history and window forecasts |
+| GET | `/notifications` | Redacted notification settings and delivery status |
+| PUT | `/notifications` | Save notification channels, recipients and cooldown |
 | PUT | `/settings` | Replace settings with the current `revision`; persist before acknowledging |
 | POST | `/check` | Queue a background quota check |
 | POST | `/resolve` | Acknowledge a specific unresolved request ID and disable automatic redemption |
@@ -147,7 +194,7 @@ Go 1.22+, a C compiler, and CGO are required.
 ```bash
 go test -race ./...
 make build
-make package VERSION=0.3.0
+make package VERSION=0.4.0
 python3 tests/abi_smoke.py dist/cpa-codex-reset-manager.so
 node tests/browser.mjs
 ```

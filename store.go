@@ -12,7 +12,7 @@ import (
 
 const pluginID = "cpa-codex-reset-manager"
 
-var pluginVersion = "0.3.0"
+var pluginVersion = "0.4.0"
 
 type Policy struct {
 	Monitor   bool `json:"monitor"`
@@ -67,11 +67,13 @@ type Attempt struct {
 	Next      time.Time `json:"next"`
 }
 type Runtime struct {
-	Current  Reading   `json:"current"`
-	Previous Reading   `json:"previous"`
-	Attempt  *Attempt  `json:"attempt,omitempty"`
-	WeekLock time.Time `json:"week_lock"`
-	Error    string    `json:"error,omitempty"`
+	Current  Reading         `json:"current"`
+	Previous Reading         `json:"previous"`
+	Attempt  *Attempt        `json:"attempt,omitempty"`
+	WeekLock time.Time       `json:"week_lock"`
+	Error    string          `json:"error,omitempty"`
+	Label    string          `json:"label,omitempty"`
+	History  []HistorySample `json:"history,omitempty"`
 }
 type Event struct {
 	At      time.Time `json:"at"`
@@ -87,10 +89,13 @@ type RuntimeState struct {
 // Every successful write fsyncs the file before rename. Corruption is an error,
 // never interpreted as fresh consent or an empty reset journal.
 type Store struct {
-	mu       sync.Mutex
-	dir      string
-	settings Settings
-	runtime  RuntimeState
+	mu            sync.Mutex
+	dir           string
+	settings      Settings
+	runtime       RuntimeState
+	delivery      DeliveryConfig
+	deliveryLog   map[string]DeliveryRecord
+	deliveryError string
 }
 
 func openStore(dir string) (*Store, error) {
@@ -130,6 +135,16 @@ func openStore(dir string) (*Store, error) {
 	}
 	if s.runtime.Accounts == nil {
 		return nil, errors.New("runtime accounts missing")
+	}
+	for id, r := range s.runtime.Accounts {
+		if len(r.History) == 0 {
+			appendHistory(&r, r.Previous)
+			appendHistory(&r, r.Current)
+		}
+		s.runtime.Accounts[id] = r
+	}
+	if err := s.loadDelivery(); err != nil {
+		return nil, err
 	}
 	// Test durability before accepting the plugin registration.
 	if err := atomicJSON(filepath.Join(dir, "settings.json"), s.settings); err != nil {

@@ -66,8 +66,8 @@ with tempfile.TemporaryDirectory() as tmp:
         registration = call("plugin.register", config)
         assert registration["metadata"]["Name"] == "Codex 额度管家"
         routes = call("management.register", {})
-        assert len(routes["routes"]) == 4
-        for asset, content_type in [("app.js", "text/javascript"), ("style.css", "text/css"), ("logo.png", "image/png")]:
+        assert len(routes["routes"]) == 7
+        for asset, content_type in [("workspace.js", "text/javascript"), ("app.js", "text/javascript"), ("style.css", "text/css"), ("logo.png", "image/png")]:
             resource = call("management.handle", {"Method": "GET", "Path": "/v0/resource/plugins/cpa-codex-reset-manager/" + asset})
             assert resource["StatusCode"] == 200
             assert resource["Headers"]["Content-Type"][0].startswith(content_type)

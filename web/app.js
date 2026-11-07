@@ -6,7 +6,7 @@ const messages={
  languageLabel:['界面语言','Language'],themeLabel:['外观主题','Appearance'],themeAuto:['自动','Auto'],themeLight:['浅色','Light'],themeDark:['深色','Dark'],
  connectTitle:['连接额度管家','Connect to Quota Steward'],connectDescription:['输入 CPA 管理密钥，查看额度与重置设置。','Enter your CPA Management Key to view quota and reset settings.'],managementKey:['管理密钥','Management Key'],rememberKey:['在此浏览器记住密钥','Remember key in this browser'],rememberHint:['共享设备请勿勾选；未勾选时只保留在当前标签页。','Use only on a trusted device. Otherwise the key stays in this tab’s session.'],connect:['连接','Connect'],forget:['忘记密钥','Forget key'],
  settingsTitle:['持久设置','Persistent settings'],policyHint:['新账号默认关闭。周额度耗尽时可兑换一张，每七天最多一次；到期兑换独立启用。兑换会重置额度窗口。','New accounts default to off. Weekly exhaustion allows one redemption per seven days; expiring credits are a separate policy. Redemption resets quota windows.'],pollLabel:['巡检间隔（分钟）','Poll interval (minutes)'],leadLabel:['到期前兑换（分钟）','Redeem before expiry (minutes)'],reminderLabel:['提前提醒（小时）','Reminder horizon (hours)'],scheduleHint:['兑换提前量至少为巡检间隔的两倍。提醒依赖实测额度变化，不会生成模型请求。','The expiry lead must be at least twice the poll interval. Reminders use observed quota changes and do not generate model requests.'],save:['保存设置','Save settings'],refresh:['刷新','Refresh'],check:['立即巡检','Check now'],notify:['启用浏览器提醒','Enable notifications'],
- noticesTitle:['当前提醒','Pace reminders'],notificationHint:['浏览器通知需要此页面保持打开；后台兑换不依赖页面。','Keep this page open for browser notifications. Server-side resets run independently.'],accountsTitle:['账号状态','Accounts'],activityTitle:['操作记录','Activity'],monitor:['监控与提醒','Monitor and remind'],expiring:['到期前兑换','Redeem before expiry'],exhausted:['周额度耗尽兑换','Redeem when weekly quota is exhausted'],accountMissing:['账号暂不可见，设置仍然保留。','Account currently unavailable; its saved policy is retained.'],
+ noticesTitle:['当前提醒','Pace reminders'],notificationHint:['邮件和 Webhook 不需要保持页面打开；浏览器提醒仅在页面打开时可用。','Email and webhooks work with this page closed. Browser notifications require an open page.'],accountsTitle:['账号状态','Accounts'],activityTitle:['操作记录','Activity'],monitor:['监控与提醒','Monitor and remind'],expiring:['到期前兑换','Redeem before expiry'],exhausted:['周额度耗尽兑换','Redeem when weekly quota is exhausted'],accountMissing:['账号暂不可见，设置仍然保留。','Account currently unavailable; its saved policy is retained.'],
  savedRevision:['已保存版本','Saved revision'],remaining:['剩余','Remaining'],currentRate:['当前速度','Current pace'],targetRate:['可用速度','Budget pace'],perHour:['%/小时','%/h'],sample:['采样时间','Last sample'],credits:['重置券','Reset credits'],used:['已用','used'],reset:['重置时间','Resets at'],creditExpiry:['重置券到期','Credit expires'],hours:['小时','hours'],weekly:['周额度','Weekly quota'],fiveHour:['五小时额度','Five-hour quota'],primary:['主额度','Primary quota'],secondary:['次级额度','Secondary quota'],
  noticeEmpty:['启用账号监控后开始采样。','Enable monitoring to start collecting samples.'],stale:['额度数据过期或尚未采样，暂不判断用量速度。','Quota data is stale or missing; pace estimates are paused.'],slowNear:['额度接近耗尽，请减缓速度。','Quota is nearly exhausted. Slow down.'],slowPace:['当前速度可能在重置前耗尽额度，请适当减速。','Your current pace may exhaust quota before reset. Consider slowing down.'],speed_up:['重置临近，按当前速度将留下未用额度，可以加快有价值任务。','Reset is approaching. Your current pace may leave quota unused; there is room to do more useful work.'],constrained:['其他额度窗口受限，请优先减速。','Another quota window is constrained. Prioritize slowing down.'],learning:['等待同周期的第二个有效样本。','Waiting for a second valid sample in this quota window.'],balanced:['当前速度基本合适。','Your current pace is within budget.'],
  redemptionState:['兑换状态','Redemption status'],pending:['等待确认','Pending'],accepted:['请求已接受','Accepted'],blocked:['已暂停，待核验','Paused for review'],rejected:['请求被拒绝','Rejected'],verified:['已验证','Verified'],resolve:['已人工核对，解除挂起','Resolve after manual review'],resolveConfirm:['已核对上游兑换记录？此操作将关闭该账号自动兑换。','Have you reviewed the upstream redemption history? This disables automatic redemption for this account.'],eventRequest:['兑换请求：','Redemption request: '],eventVerified:['重置已验证：','Reset verified: '],eventResolved:['已人工核对待确认请求，自动兑换已关闭。','Unresolved request reviewed by operator; automatic redemption disabled.'],weekly_exhausted:['周额度耗尽','weekly exhaustion'],
@@ -74,6 +74,7 @@ function disconnect(message){
  authGeneration++;const cleared=clearStoredAuth();key='';state=null;dirty=false;busy=false;notifications=false;sent.clear();
  $('app').hidden=true;$('login').hidden=false;$('forget').hidden=true;$('key').value='';$('rememberKey').checked=false;$('version').textContent='';
  for(const id of ['policies','notices','accounts','events'])$(id).replaceChildren();
+ if(window.resetWorkspace)resetWorkspace();
  feedback(cleared?message:'clearStorageHint');$('key').focus();
 }
 async function api(path,method='GET',body){
@@ -113,7 +114,7 @@ function render(sendNotifications=true){
  for(const n of state.notices){
   const box=el('div',undefined,'notice '+n.kind);
   box.append(el('strong',labelAccount(n.account)+' · '+(n.window?windowLabel(n.window):'')),el('p',noticeText(n)));
-  if(n.deadline&&!n.deadline.startsWith('0001'))box.append(el('small',t('remaining')+' '+n.remaining.toFixed(1)+'% · '+t('currentRate')+' '+n.rate_per_hour.toFixed(2)+t('perHour')+' · '+t('targetRate')+' '+n.target_per_hour.toFixed(2)+t('perHour')+' · '+time(n.deadline)));
+  if(n.deadline&&!n.deadline.startsWith('0001'))box.append(el('small',t('remaining')+' '+n.remaining.toFixed(1)+'% · '+t('currentRate')+' '+(n.rate_known===false?'—':n.rate_per_hour.toFixed(2)+t('perHour'))+' · '+t('targetRate')+' '+n.target_per_hour.toFixed(2)+t('perHour')+' · '+time(n.deadline)));
   $('notices').append(box);
   const stamp=n.account+'|'+n.window+'|'+n.kind+'|'+n.deadline;
   if(sendNotifications&&notifications&&['slow_down','speed_up','stale'].includes(n.kind)&&(!sent.has(stamp)||Date.now()-sent.get(stamp)>3600000)){new Notification('Codex · '+labelAccount(n.account),{body:noticeText(n),tag:n.account+'|'+n.window});sent.set(stamp,Date.now());}
@@ -130,6 +131,7 @@ function render(sendNotifications=true){
  }
  $('events').replaceChildren();for(const e of [...(state.runtime.events||[])].reverse().slice(0,40))$('events').append(el('p',time(e.at)+' · '+labelAccount(e.account)+' · '+serverText(e.message)));
  if(state.health)feedback('requestFailed',state.health);
+ if(window.renderWorkspace)renderWorkspace();
 }
 async function load(manual=true){
  if(busy)return false;busy=true;const generation=authGeneration;
@@ -137,7 +139,7 @@ async function load(manual=true){
  catch(e){if(!e.stale&&generation===authGeneration)feedback('requestFailed',e.message);return false;}finally{if(generation===authGeneration)busy=false;}
 }
 $('connect').onsubmit=async e=>{e.preventDefault();if(busy)return;authGeneration++;key=$('key').value.trim();$('key').value='';if(await load()){const warning=rememberAuth();if(warning)feedback(warning);}};
-$('forget').onclick=()=>{if(dirty&&!confirm(t('forgetConfirm')))return;disconnect('keyRemoved');};
+$('forget').onclick=()=>{if((dirty||window.workspaceDirty?.())&&!confirm(t('forgetConfirm')))return;disconnect('keyRemoved');};
 $('settings').addEventListener('input',()=>dirty=true);
 $('settings').onsubmit=async e=>{
  e.preventDefault();if(busy||!state)return;

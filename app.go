@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,10 +28,14 @@ var dashboardJS []byte
 //go:embed web/style.css
 var dashboardCSS []byte
 
+//go:embed web/workspace.js
+var workspaceJS []byte
+
 type managementRequest struct {
-	Method string `json:"Method"`
-	Path   string `json:"Path"`
-	Body   []byte `json:"Body"`
+	Method string     `json:"Method"`
+	Path   string     `json:"Path"`
+	Body   []byte     `json:"Body"`
+	Query  url.Values `json:"Query"`
 }
 type managementResponse struct {
 	StatusCode int         `json:"StatusCode"`
@@ -36,14 +43,15 @@ type managementResponse struct {
 	Body       []byte      `json:"Body"`
 }
 type service struct {
-	lifecycle sync.Mutex
-	mu        sync.Mutex
-	store     *Store
-	cancel    chan struct{}
-	done      chan struct{}
-	wake      chan struct{}
-	health    string
-	fault     bool
+	lifecycle  sync.Mutex
+	mu         sync.Mutex
+	store      *Store
+	cancel     chan struct{}
+	done       chan struct{}
+	wake       chan struct{}
+	notifyWake chan struct{}
+	health     string
+	fault      bool
 }
 
 var global = &service{}
@@ -95,10 +103,14 @@ func (a *service) configure(raw []byte) error {
 	a.cancel = make(chan struct{})
 	a.done = make(chan struct{})
 	a.wake = make(chan struct{}, 1)
+	a.notifyWake = make(chan struct{}, 1)
 	stop, done, wake := a.cancel, a.done, a.wake
+	notifyWake := a.notifyWake
 	a.mu.Unlock()
+	var workers sync.WaitGroup
+	workers.Add(2)
 	go func() {
-		defer close(done)
+		defer workers.Done()
 		for {
 			select {
 			case <-stop:
@@ -120,6 +132,30 @@ func (a *service) configure(raw []byte) error {
 			}
 		}
 	}()
+	go func() {
+		defer workers.Done()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			select {
+			case <-stop:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			deliverNotifications(ctx, s, sendNotification)
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			case <-notifyWake:
+			}
+		}
+	}()
+	go func() { workers.Wait(); close(done) }()
 	return nil
 }
 func (a *service) poll(s *Store, stop <-chan struct{}) {
@@ -156,6 +192,12 @@ func (a *service) poll(s *Store, stop <-chan struct{}) {
 			s.mu.Unlock()
 			continue
 		}
+		runtime := s.runtime.Accounts[account.Key]
+		runtime.Label = account.Email
+		if runtime.Label == "" {
+			runtime.Label = account.Name
+		}
+		s.runtime.Accounts[account.Key] = runtime
 		c, err := credentials(account)
 		if err == nil {
 			pending := s.runtime.Accounts[account.Key].Attempt != nil
@@ -202,10 +244,10 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		return okEnvelope(struct{}{})
 	case "management.register":
 		routes := []any{}
-		for _, r := range [][2]string{{"GET", "/status"}, {"PUT", "/settings"}, {"POST", "/check"}, {"POST", "/resolve"}} {
+		for _, r := range [][2]string{{"GET", "/status"}, {"GET", "/history"}, {"GET", "/notifications"}, {"PUT", "/notifications"}, {"PUT", "/settings"}, {"POST", "/check"}, {"POST", "/resolve"}} {
 			routes = append(routes, map[string]string{"Method": r[0], "Path": "/" + pluginID + r[1]})
 		}
-		return okEnvelope(map[string]any{"routes": routes, "resources": []any{map[string]string{"Path": "/dashboard", "Menu": "Codex 额度管家", "Description": "额度监控、用量提醒与持久重置策略"}, map[string]string{"Path": "/logo.png"}, map[string]string{"Path": "/app.js"}, map[string]string{"Path": "/style.css"}}})
+		return okEnvelope(map[string]any{"routes": routes, "resources": []any{map[string]string{"Path": "/dashboard", "Menu": "Codex 额度管家", "Description": "额度监控、用量提醒与持久重置策略"}, map[string]string{"Path": "/logo.png"}, map[string]string{"Path": "/app.js"}, map[string]string{"Path": "/workspace.js"}, map[string]string{"Path": "/style.css"}}})
 	case "management.handle":
 		var req managementRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -230,8 +272,9 @@ func (a *service) handle(req managementRequest) managementResponse {
 				contentType string
 				body        []byte
 			}{
-				"/app.js":    {"text/javascript; charset=utf-8", dashboardJS},
-				"/style.css": {"text/css; charset=utf-8", dashboardCSS},
+				"/app.js":       {"text/javascript; charset=utf-8", dashboardJS},
+				"/style.css":    {"text/css; charset=utf-8", dashboardCSS},
+				"/workspace.js": {"text/javascript; charset=utf-8", workspaceJS},
 			} {
 				if req.Path == "/v0/resource/plugins/"+pluginID+path {
 					return managementResponse{200, http.Header{"Content-Type": {asset.contentType}, "Cache-Control": {"no-store"}, "X-Content-Type-Options": {"nosniff"}}, asset.body}
@@ -249,7 +292,7 @@ func (a *service) handle(req managementRequest) managementResponse {
 	path := strings.TrimPrefix(req.Path, "/v0/management")
 	path = strings.TrimPrefix(path, "/"+pluginID)
 	a.mu.Lock()
-	s, wake, health := a.store, a.wake, a.health
+	s, wake, health, notifyWake := a.store, a.wake, a.health, a.notifyWake
 	a.mu.Unlock()
 	if s == nil {
 		return response(503, map[string]string{"error": "not configured"})
@@ -269,6 +312,35 @@ func (a *service) handle(req managementRequest) managementResponse {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
+	case req.Method == "GET" && path == "/notifications":
+		return response(200, s.deliveryView())
+	case req.Method == "PUT" && path == "/notifications":
+		if err := s.saveDelivery(req.Body); err != nil {
+			return response(400, map[string]string{"error": err.Error()})
+		}
+		select {
+		case notifyWake <- struct{}{}:
+		default:
+		}
+		return response(200, s.deliveryView())
+	case req.Method == "GET" && path == "/history":
+		id := req.Query.Get("account")
+		r, ok := s.runtime.Accounts[id]
+		if !ok {
+			return response(404, map[string]string{"error": "account not found"})
+		}
+		hours, _ := strconv.Atoi(req.Query.Get("hours"))
+		if hours != 6 && hours != 24 && hours != 168 && hours != 336 {
+			hours = 24
+		}
+		start := time.Now().Add(-time.Duration(hours) * time.Hour)
+		points := []HistorySample{}
+		for _, p := range samples(r) {
+			if !p.At.Before(start) {
+				points = append(points, p)
+			}
+		}
+		return response(200, map[string]any{"account": id, "points": points, "forecasts": forecasts(id, r, s.settings.Accounts[id], s.settings, time.Now()), "server_time": time.Now()})
 	case req.Method == "GET" && path == "/status":
 		if listErr != nil {
 			health = listErr.Error()
@@ -277,7 +349,14 @@ func (a *service) handle(req managementRequest) managementResponse {
 		for id, p := range s.settings.Accounts {
 			all = append(all, notices(id, s.runtime.Accounts[id], p, s.settings, time.Now())...)
 		}
-		return response(200, map[string]any{"version": pluginVersion, "settings": s.settings, "runtime": s.runtime, "accounts": accounts, "notices": all, "health": health, "data_dir": s.dir, "server_time": time.Now()})
+		summary := RuntimeState{Accounts: map[string]Runtime{}, Events: s.runtime.Events}
+		predictions := map[string][]Forecast{}
+		for id, r := range s.runtime.Accounts {
+			predictions[id] = forecasts(id, r, s.settings.Accounts[id], s.settings, time.Now())
+			r.History = nil
+			summary.Accounts[id] = r
+		}
+		return response(200, map[string]any{"version": pluginVersion, "settings": s.settings, "runtime": summary, "forecasts": predictions, "accounts": accounts, "notices": all, "health": health, "data_dir": s.dir, "server_time": time.Now()})
 	case req.Method == "PUT" && path == "/settings":
 		var v Settings
 		if err := json.Unmarshal(req.Body, &v); err != nil {
