@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory() as tmp:
     config = {"config_yaml": base64.b64encode(("data_dir: " + tmp).encode()).decode()}
     try:
         registration = call("plugin.register", config)
-        assert registration["metadata"]["Name"] == "CPA Codex Reset Manager"
+        assert registration["metadata"]["Name"] == "Codex 额度管家"
         routes = call("management.register", {})
         assert len(routes["routes"]) == 4
         settings = manage("GET", "/status")["settings"]

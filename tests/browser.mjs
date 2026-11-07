@@ -5,14 +5,16 @@ import path from 'node:path';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 const html=await fs.readFile(new URL('../web/index.html',import.meta.url));
+const logo=await fs.readFile(new URL('../logo.png',import.meta.url));
 let settings={revision:0,poll_minutes:5,lead_minutes:30,reminder_hours:24,accounts:{'account:demo':{monitor:true,expiring:false,exhausted:false}}};
 let failSave=false;
 const server=http.createServer(async(req,res)=>{
  if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end(html);return;}
+ if(req.url.endsWith('/logo.png')){res.setHeader('Content-Type','image/png');res.end(logo);return;}
  res.setHeader('Content-Type','application/json');
  if(req.headers.authorization!=='Bearer demo'){res.writeHead(401);res.end('{"error":"unauthorized"}');return;}
  if(req.url.endsWith('/status')){
-  res.end(JSON.stringify({version:'0.1.1',settings,accounts:[{key:'account:demo',email:'demo@example.invalid'}],runtime:{accounts:{},events:[]},notices:[],data_dir:'/persistent/test',health:''}));return;
+  res.end(JSON.stringify({version:'0.2.0',settings,accounts:[{key:'account:demo',email:'demo@example.invalid'}],runtime:{accounts:{},events:[]},notices:[],data_dir:'/persistent/test',health:''}));return;
  }
  if(req.url.endsWith('/settings')){
   let raw='';for await(const chunk of req)raw+=chunk;
@@ -54,10 +56,55 @@ try{
  await evaluate("document.getElementById('key').value='demo';document.getElementById('connect').requestSubmit()");
  await until(()=>evaluate("!document.getElementById('app').hidden"));
  assert.equal(await evaluate("document.getElementById('key').value"),'');
+ assert.equal(await evaluate("sessionStorage.getItem('ccrm-key')"),'demo');
+ assert.equal(await evaluate("localStorage.getItem('ccrm-persistent-key')"),null);
+ assert.equal(await evaluate("document.querySelector('h1').textContent"),'Codex 额度管家');
+ await until(()=>evaluate("document.querySelector('.brand img').naturalWidth>0"));
  await evaluate("document.querySelector('[data-field=expiring]').click();document.getElementById('settings').requestSubmit()");
  await until(()=>settings.revision===1);
  assert.equal(settings.accounts['account:demo'].expiring,true);
+ // Default tab-scoped memory survives a reload without remembering long-term.
+ await cdp('Page.reload',{ignoreCache:true});
+ await until(()=>evaluate("!document.getElementById('app').hidden&&!busy"));
+ assert.equal(await evaluate("localStorage.getItem('ccrm-persistent-key')"),null);
+ await evaluate("document.getElementById('forget').click()");
+ assert.equal(await evaluate("sessionStorage.getItem('ccrm-key')"),null);
+ assert.equal(await evaluate("document.getElementById('login').hidden"),false);
+ // Only a successfully authenticated key may become persistent.
+ await evaluate("document.getElementById('key').value='wrong';document.getElementById('rememberKey').checked=true;document.getElementById('connect').requestSubmit()");
+ await until(()=>evaluate("!busy&&document.getElementById('feedback').textContent.includes('Key rejected')"));
+ assert.equal(await evaluate("localStorage.getItem('ccrm-persistent-key')"),null);
+ await evaluate("document.getElementById('key').value='demo';document.getElementById('rememberKey').checked=true;document.getElementById('connect').requestSubmit()");
+ await until(()=>evaluate("localStorage.getItem('ccrm-persistent-key')==='demo'&&!busy"));
+ assert.equal(await evaluate("sessionStorage.getItem('ccrm-key')"),null);
+ // A genuinely new tab has no sessionStorage but reuses the opted-in key.
+ const target=await cdp('Target.createTarget',{url:`http://127.0.0.1:${server.address().port}/`});
+ const newPages=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+ const handler=socket.onmessage;
+ socket.close();
+ socket=new WebSocket(newPages.find(p=>p.id===target.targetId).webSocketDebuggerUrl);
+ await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
+ socket.onmessage=handler;
+ await cdp('Page.enable');
+ await until(()=>evaluate("!document.getElementById('app').hidden&&!busy"));
+ assert.equal(await evaluate("sessionStorage.getItem('ccrm-key')"),null);
+ assert.equal(await evaluate("document.getElementById('rememberKey').checked"),true);
+ // A revoked saved key clears storage and displays the connection form.
+ await evaluate("localStorage.setItem('ccrm-persistent-key','revoked')");
+ await cdp('Page.reload',{ignoreCache:true});
+ await until(()=>evaluate("!document.getElementById('login').hidden&&document.getElementById('feedback').textContent.includes('Key rejected')"));
+ assert.equal(await evaluate("localStorage.getItem('ccrm-persistent-key')"),null);
+ // Remembering can be disabled again without leaving a persistent copy.
+ await evaluate("document.getElementById('key').value='demo';document.getElementById('rememberKey').checked=false;document.getElementById('connect').requestSubmit()");
+ await until(()=>evaluate("!document.getElementById('app').hidden&&!busy"));
+ assert.equal(await evaluate("sessionStorage.getItem('ccrm-key')"),'demo');
+ assert.equal(await evaluate("localStorage.getItem('ccrm-persistent-key')"),null);
  await until(()=>evaluate("!busy"));
+ // Blocking storage never prevents a memory-only authenticated session.
+ await evaluate("document.getElementById('forget').click();window.originalStorageSetter=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('blocked','SecurityError')};document.getElementById('key').value='demo';document.getElementById('rememberKey').checked=true;document.getElementById('connect').requestSubmit()");
+ await until(()=>evaluate("!document.getElementById('app').hidden&&!busy&&document.getElementById('feedback').textContent.includes('memory only')"));
+ assert.equal(await evaluate("document.getElementById('rememberKey').checked"),false);
+ await evaluate("Storage.prototype.setItem=window.originalStorageSetter");
  // An edit must retain its old revision even while status is refreshed.
  await evaluate("document.getElementById('poll').value='4';document.getElementById('poll').dispatchEvent(new Event('input',{bubbles:true}))");
  settings.revision=2;
@@ -75,7 +122,7 @@ try{
  await fs.mkdir(new URL('../output/',import.meta.url),{recursive:true});
  const screenshot=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});
  await fs.writeFile(new URL('../output/dashboard-mobile.png',import.meta.url),Buffer.from(screenshot.data,'base64'));
- console.log('Browser passed: authentication, save, stale revisions, failed save, mobile overflow');
+ console.log('Browser passed: icon, authentication, session/persistent memory, new tab, forget/revoked keys, save conflicts, failed save, mobile overflow');
 }catch(error){
  if(socket?.readyState===1)console.error(await evaluate("({url:location.href,text:document.body?.innerText?.slice(0,500)})"));
  throw error;

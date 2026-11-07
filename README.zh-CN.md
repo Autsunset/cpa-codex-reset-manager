@@ -1,11 +1,13 @@
-# CPA Codex Reset Manager
+# Codex 额度管家
+
+<p align="center"><img src="logo.png" width="128" height="128" alt="Codex 额度管家图标"></p>
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
 原生 CLIProxyAPI 插件，提供**持久的逐账号重置设置**和**额度使用速度提醒**。
 双语管理页面会提示：当前速度可能在重置前用完额度，需要减速；或临近重置仍有较多额度，可以加快有价值任务。
 
-当前版本：**0.1.1**。这是独立插件，不是 `codex-auto-reset` 的升级包。MIT 许可证。
+当前版本：**0.2.0**。这是独立插件，不是 `codex-auto-reset` 的升级包。MIT 许可证。
 
 ## 功能
 
@@ -54,8 +56,11 @@ volumes:
 桌面环境请指定绝对路径且确保可写。备份、迁移必须同时保留两个 JSON 文件。
 运行中不允许切换目录；先停宿主、复制两个文件，再改路径。删除持久卷仍然会丢失设置。
 
-打开插件菜单中的 **Codex 重置与节奏**，输入 CPA Management Key，选择账号并保存。
-密钥只保留在当前页面内存，不写入插件数据。自动兑换必须显式选择对应策略。
+打开插件菜单中的 **Codex 额度管家**，输入 CPA Management Key，选择账号并保存。
+与额度插件一致：默认只在当前标签页的会话存储中保留密钥，刷新页面无需重新输入；
+勾选「在此浏览器记住密钥」后可跨浏览器会话保留，仅建议在可信设备上使用。
+「忘记密钥」会清除此插件保存的密钥；密钥失效时会清除并要求重新连接。
+密钥不会写入服务端插件数据。自动兑换必须显式选择对应策略。
 
 默认每五分钟巡检、到期前三十分钟兑换、重置前二十四小时开始评估加速提醒。
 兑换提前量至少是巡检间隔的两倍。浏览器通知需要权限及 HTTPS 或 localhost。
@@ -110,7 +115,7 @@ volumes:
 ```bash
 go test -race ./...
 make build
-make package VERSION=0.1.1
+make package VERSION=0.2.0
 python3 tests/abi_smoke.py dist/cpa-codex-reset-manager.so
 node tests/browser.mjs
 ```

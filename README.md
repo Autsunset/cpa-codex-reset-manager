@@ -1,4 +1,6 @@
-# CPA Codex Reset Manager
+# Codex Quota Steward
+
+<p align="center"><img src="logo.png" width="128" height="128" alt="Codex Quota Steward icon"></p>
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -6,7 +8,7 @@ A native CLIProxyAPI plugin with **persistent per-account reset policies** and
 **quota pace reminders**. Its bilingual dashboard shows when to slow down to
 reach the next reset, or when unused quota is likely to remain at reset time.
 
-Version: **0.1.1**. This is an independent plugin, not an upgrade package for
+Version: **0.2.0**. This is an independent plugin, not an upgrade package for
 `codex-auto-reset`. MIT licensed.
 
 ## Features
@@ -70,9 +72,13 @@ Keep both JSON files together when backing up or migrating. Changing the
 directory during a live reload is rejected; stop the host, copy both files, then
 change the path. Removing the persistent volume also removes the settings.
 
-Open **Codex 重置与节奏** in CPA's plugin menu. Enter the CPA Management Key,
-enable monitoring for the desired accounts, and save. The key stays in page
-memory and is never written to plugin storage. Automatic redemption is enabled
+Open **Codex 额度管家** in CPA's plugin menu. Enter the CPA Management Key,
+enable monitoring for the desired accounts, and save. By default, the key stays in the current tab’s session storage, so refreshing
+the page does not require signing in again. Select **Remember key** to keep it
+in this browser across sessions, as in CPA Quota Estimator. Use this option only
+on trusted devices. **Forget key** clears this plugin’s saved key. Rejected keys
+are cleared and prompt for reconnection. Keys are never written to server-side
+plugin storage. Automatic redemption is enabled
 only when you explicitly select its policy.
 
 Defaults: polling every 5 minutes, redeeming 30 minutes before expiry, and
@@ -135,7 +141,7 @@ Go 1.22+, a C compiler, and CGO are required.
 ```bash
 go test -race ./...
 make build
-make package VERSION=0.1.1
+make package VERSION=0.2.0
 python3 tests/abi_smoke.py dist/cpa-codex-reset-manager.so
 node tests/browser.mjs
 ```

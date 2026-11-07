@@ -12,7 +12,7 @@ import (
 
 const pluginID = "cpa-codex-reset-manager"
 
-var pluginVersion = "0.1.1"
+var pluginVersion = "0.2.0"
 
 type Policy struct {
 	Monitor   bool `json:"monitor"`

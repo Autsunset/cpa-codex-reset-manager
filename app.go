@@ -16,6 +16,9 @@ import (
 //go:embed web/index.html
 var dashboard []byte
 
+//go:embed logo.png
+var logo []byte
+
 type managementRequest struct {
 	Method string `json:"Method"`
 	Path   string `json:"Path"`
@@ -185,7 +188,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		}
 		return okEnvelope(map[string]any{
 			"schema_version": 1,
-			"metadata":       map[string]any{"Name": "CPA Codex Reset Manager", "Version": pluginVersion, "Author": "Autsunset", "GitHubRepository": "https://github.com/Autsunset/" + pluginID, "ConfigFields": []any{map[string]any{"Name": "data_dir", "Type": "string", "Description": "Absolute persistent directory; default /CLIProxyAPI/data/cpa-codex-reset-manager"}}},
+			"metadata":       map[string]any{"Name": "Codex 额度管家", "Version": pluginVersion, "Author": "Autsunset", "GitHubRepository": "https://github.com/Autsunset/" + pluginID, "Logo": "https://raw.githubusercontent.com/Autsunset/" + pluginID + "/main/logo.png", "ConfigFields": []any{map[string]any{"Name": "data_dir", "Type": "string", "Description": "Absolute persistent directory; default /CLIProxyAPI/data/cpa-codex-reset-manager"}}},
 			"capabilities":   map[string]bool{"management_api": true},
 		})
 	case "plugin.quiesce":
@@ -196,7 +199,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		for _, r := range [][2]string{{"GET", "/status"}, {"PUT", "/settings"}, {"POST", "/check"}, {"POST", "/resolve"}} {
 			routes = append(routes, map[string]string{"Method": r[0], "Path": "/" + pluginID + r[1]})
 		}
-		return okEnvelope(map[string]any{"routes": routes, "resources": []any{map[string]string{"Path": "/dashboard", "Menu": "Codex 重置与节奏", "Description": "Persistent reset policies and quota pace reminders"}}})
+		return okEnvelope(map[string]any{"routes": routes, "resources": []any{map[string]string{"Path": "/dashboard", "Menu": "Codex 额度管家", "Description": "额度监控、用量提醒与持久重置策略"}, map[string]string{"Path": "/logo.png"}}})
 	case "management.handle":
 		var req managementRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -216,6 +219,9 @@ func (a *service) handle(req managementRequest) managementResponse {
 	a.lifecycle.Lock()
 	defer a.lifecycle.Unlock()
 	if strings.HasPrefix(req.Path, "/v0/resource/plugins/") {
+		if req.Method == "GET" && req.Path == "/v0/resource/plugins/"+pluginID+"/logo.png" {
+			return managementResponse{200, http.Header{"Content-Type": {"image/png"}, "Cache-Control": {"no-cache"}, "X-Content-Type-Options": {"nosniff"}}, logo}
+		}
 		if req.Method == "GET" && req.Path == "/v0/resource/plugins/"+pluginID+"/dashboard" {
 			return managementResponse{200, http.Header{"Content-Type": {"text/html; charset=utf-8"}, "Cache-Control": {"no-store"}, "Content-Security-Policy": {"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'"}}, dashboard}
 		}
