@@ -5,9 +5,14 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
 原生 CLIProxyAPI 插件，提供**持久的逐账号重置设置**和**额度使用速度提醒**。
-双语管理页面会提示：当前速度可能在重置前用完额度，需要减速；或临近重置仍有较多额度，可以加快有价值任务。
+支持中英文切换的管理页面会提示：当前速度可能在重置前用完额度，需要减速；或临近重置仍有较多额度，可以加快有价值任务。
 
-当前版本：**0.2.0**。这是独立插件，不是 `codex-auto-reset` 的升级包。MIT 许可证。
+通过顶部的 **中文 / English** 按钮切换界面语言，每次只显示一种语言。
+主题提供 **自动 / 浅色 / 深色**，覆盖表单、卡片和提醒等全部界面。
+自动模式优先跟随可读取的管理面板主题，否则跟随系统。语言和主题选择会在当前浏览器记住，
+切换时不会丢失尚未保存的设置。
+
+当前版本：**0.3.0**。这是独立插件，不是 `codex-auto-reset` 的升级包。MIT 许可证。
 
 ## 功能
 
@@ -115,7 +120,7 @@ volumes:
 ```bash
 go test -race ./...
 make build
-make package VERSION=0.2.0
+make package VERSION=0.3.0
 python3 tests/abi_smoke.py dist/cpa-codex-reset-manager.so
 node tests/browser.mjs
 ```

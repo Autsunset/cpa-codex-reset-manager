@@ -5,10 +5,16 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
 A native CLIProxyAPI plugin with **persistent per-account reset policies** and
-**quota pace reminders**. Its bilingual dashboard shows when to slow down to
+**quota pace reminders**. Its English/Chinese dashboard shows when to slow down to
 reach the next reset, or when unused quota is likely to remain at reset time.
 
-Version: **0.2.0**. This is an independent plugin, not an upgrade package for
+Use **中文 / English** to choose one interface language at a time. **Auto / Light /
+Dark** controls the full color theme, including forms, cards and notices.
+Auto follows the containing management panel when its theme is accessible,
+otherwise the system setting. Both choices are remembered in this browser;
+switching them preserves unsaved settings.
+
+Version: **0.3.0**. This is an independent plugin, not an upgrade package for
 `codex-auto-reset`. MIT licensed.
 
 ## Features
@@ -141,7 +147,7 @@ Go 1.22+, a C compiler, and CGO are required.
 ```bash
 go test -race ./...
 make build
-make package VERSION=0.2.0
+make package VERSION=0.3.0
 python3 tests/abi_smoke.py dist/cpa-codex-reset-manager.so
 node tests/browser.mjs
 ```

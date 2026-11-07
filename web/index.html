@@ -3,156 +3,18 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Codex 额度管家</title>
 <link rel="icon" type="image/png" href="/v0/resource/plugins/cpa-codex-reset-manager/logo.png">
-<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;background:#10151b;color:#e9edf3}
-*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:32px 20px}
-h1{font-size:26px;margin:0}h2{font-size:18px}p{line-height:1.6}.muted,small{color:#a7b2c1}
-header{display:flex;justify-content:space-between;gap:16px;align-items:center}
-.brand{display:flex;align-items:center;gap:16px}.brand img{width:64px;height:64px;border-radius:16px;flex-shrink:0}.brand p{margin:6px 0 0}.connection-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-section,.card{background:#19212b;border:1px solid #344052;border-radius:12px;padding:20px;margin:20px 0}
-label{display:inline-flex;align-items:center;gap:8px;margin:8px 16px 8px 0}
-input,button{font:inherit;padding:9px;border-radius:6px;border:1px solid #65718a;background:#10151b;color:inherit}
-input[type=number]{width:88px}input[type=password]{width:min(100%,360px)}input[type=checkbox]{width:18px;height:18px}
-#connect>label:first-child{display:flex;align-items:flex-start;flex-direction:column}
-button{cursor:pointer}button.primary{background:#bddbff;color:#122033;border:0}button:disabled{opacity:.5;cursor:wait}
-.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.status{white-space:pre-wrap;color:#f0cb80}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.grid .card{margin:0}
-.notice{padding:12px;border-left:3px solid #88b9ee;margin:10px 0;background:#121a23}
-.slow_down,.stale{border-color:#f2b77b}.speed_up{border-color:#83d4b5}
-.account{overflow-wrap:anywhere}.window{padding:10px 0;border-bottom:1px solid #344052}
-progress{width:100%;height:9px;accent-color:#a6caff}
-pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#feedback{min-height:24px}
-@media(max-width:600px){main{padding:20px 12px}header{align-items:flex-start;flex-direction:column}section{padding:14px}}
-</style></head>
+<script>try{const t=localStorage.getItem('ccrm-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch{}</script>
+<link rel="stylesheet" href="/v0/resource/plugins/cpa-codex-reset-manager/style.css">
+<script defer src="/v0/resource/plugins/cpa-codex-reset-manager/app.js"></script></head>
 <body><main>
-<header><div class="brand"><img src="/v0/resource/plugins/cpa-codex-reset-manager/logo.png" alt="" width="64" height="64"><div><h1>Codex 额度管家</h1><p class="muted">看清余量，把握重置时机</p></div></div><div class="connection-actions"><span id="version"></span><button id="forget" type="button" hidden>忘记密钥 / Forget key</button></div></header>
-<section id="login"><h2>连接额度管家 / Connect</h2><p class="muted">输入 CPA 管理密钥，查看额度与重置设置。</p><form id="connect"><label>Management Key <input id="key" type="password" required autocomplete="current-password"></label><label><input id="rememberKey" type="checkbox">在此浏览器记住密钥 / Remember key</label><p class="muted">共享设备请勿勾选；未勾选时只保留在当前标签页。<br>Use only on a trusted device; otherwise the key stays in this tab's session.</p><button class="primary">连接 / Connect</button></form></section>
+<header><div class="brand"><img src="/v0/resource/plugins/cpa-codex-reset-manager/logo.png" alt="" width="64" height="64"><div><h1 data-i18n="product">Codex 额度管家</h1><p class="muted" data-i18n="subtitle">看清余量，把握重置时机</p></div></div>
+<div class="preferences"><div class="segmented" role="group" data-i18n-aria="languageLabel"><button type="button" data-language="zh-CN" lang="zh-CN">中文</button><button type="button" data-language="en" lang="en">English</button></div><div class="segmented" role="group" data-i18n-aria="themeLabel"><button type="button" data-theme-mode="auto" data-i18n="themeAuto">自动</button><button type="button" data-theme-mode="light" data-i18n="themeLight">浅色</button><button type="button" data-theme-mode="dark" data-i18n="themeDark">深色</button></div><div class="connection-actions"><span id="version"></span><button id="forget" type="button" hidden data-i18n="forget">忘记密钥</button></div></div></header>
+<section id="login"><h2 data-i18n="connectTitle">连接额度管家</h2><p class="muted" data-i18n="connectDescription">输入 CPA 管理密钥，查看额度与重置设置。</p><form id="connect" onsubmit="return false"><label><span data-i18n="managementKey">管理密钥</span><input id="key" type="password" required autocomplete="current-password"></label><label><input id="rememberKey" type="checkbox"><span data-i18n="rememberKey">在此浏览器记住密钥</span></label><p class="muted" data-i18n="rememberHint">共享设备请勿勾选；未勾选时只保留在当前标签页。</p><button class="primary" data-i18n="connect">连接</button></form></section>
 <p id="feedback" class="status" role="status" aria-live="polite"></p>
 <div id="app" hidden>
-<section><h2>持久设置 / Persistent settings</h2><p class="muted">新账号默认关闭。周额度耗尽时可兑换一张，每七天最多一次；到期兑换独立启用。兑换会重置额度窗口。<br>New accounts default to off. Weekly exhaustion allows one redemption per seven days; expiring credits are a separate policy.</p>
-<form id="settings">
-<label>巡检 / Poll (min) <input id="poll" type="number" min="1" max="60" required></label>
-<label>到期前兑换 / Lead (min) <input id="lead" type="number" min="2" max="1440" required></label>
-<label>提前提醒 / Remind (h) <input id="remind" type="number" min="1" max="168" required></label>
-<p class="muted">兑换提前量至少为巡检间隔的两倍。提醒依赖实测额度变化；不会生成模型请求。<br>Lead must be at least twice the poll interval. Predictions use observed quota changes.</p>
-<div id="policies"></div><div class="toolbar"><button class="primary" id="save">保存设置 / Save</button><button type="button" id="refresh">刷新 / Refresh</button><button type="button" id="check">立即巡检 / Check now</button><button type="button" id="notify">启用浏览器提醒 / Notifications</button></div>
-</form><p id="storage" class="muted"></p></section>
-<h2>当前提醒 / Pace reminders</h2><p class="muted">浏览器通知需要此页面保持打开；后台兑换不依赖页面。/ Keep this page open for browser notifications; resets run on the server.</p><div id="notices"></div>
-<h2>账号状态 / Accounts</h2><div class="grid" id="accounts"></div>
-<section><h2>操作记录 / Activity</h2><div id="events"></div></section>
-</div></main>
-<script>
-'use strict';
-const base='/v0/management/cpa-codex-reset-manager';
-const $=id=>document.getElementById(id);
-const sessionKeyStorageKey='ccrm-key';
-const persistentKeyStorageKey='ccrm-persistent-key';
-function readStoredAuth(){
- try{const saved=localStorage.getItem(persistentKeyStorageKey);if(saved)return {key:saved,persistent:true};}catch{}
- try{return {key:sessionStorage.getItem(sessionKeyStorageKey)||'',persistent:false};}catch{return {key:'',persistent:false};}
-}
-const storedAuth=readStoredAuth();
-let key=storedAuth.key,state=null,dirty=false,busy=false,notifications=false,formRevision=0,authGeneration=0;
-$('rememberKey').checked=storedAuth.persistent;
-const sent=new Map();
-function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
-function clearStoredAuth(){
- let cleared=true;
- try{localStorage.removeItem(persistentKeyStorageKey);}catch{cleared=false;}
- try{sessionStorage.removeItem(sessionKeyStorageKey);}catch{cleared=false;}
- return cleared;
-}
-function rememberAuth(){
- let warning='';
- if($('rememberKey').checked){
-  try{localStorage.setItem(persistentKeyStorageKey,key);try{sessionStorage.removeItem(sessionKeyStorageKey);}catch{}return '';}
-  catch{$('rememberKey').checked=false;warning='无法长期保存密钥，已改为仅当前标签页 / Persistent storage unavailable; using this tab only';}
- }
- try{localStorage.removeItem(persistentKeyStorageKey);}catch{warning='浏览器禁止访问长期存储，请检查网站存储权限 / Check this site’s storage permissions';}
- try{sessionStorage.setItem(sessionKeyStorageKey,key);return warning;}
- catch{return '浏览器禁止存储，密钥仅保留在当前页面 / Storage unavailable; key kept in memory only';}
-}
-function disconnect(message){
- authGeneration++;const cleared=clearStoredAuth();key='';state=null;dirty=false;busy=false;notifications=false;sent.clear();
- $('app').hidden=true;$('login').hidden=false;$('forget').hidden=true;$('key').value='';$('rememberKey').checked=false;$('version').textContent='';
- for(const id of ['policies','notices','accounts','events'])$(id).replaceChildren();
- feedback(cleared?message:message+' · 浏览器禁止访问存储，请在浏览器设置中清除此站点数据 / Clear this site’s data in browser settings');$('key').focus();
-}
-async function api(path,method='GET',body){
- const generation=authGeneration;
- const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
- if(generation!==authGeneration)throw Object.assign(Error('Connection changed'),{stale:true});
- if(r.status===401||r.status===403){disconnect('密钥无效或已失效，请重新连接 / Key rejected; reconnect');throw Object.assign(Error('Key rejected'),{stale:true});}
- const data=await r.json();
- if(generation!==authGeneration)throw Object.assign(Error('Connection changed'),{stale:true});
- if(!r.ok)throw Error(data.error||String(r.status));return data;
-}
-function feedback(text){$('feedback').textContent=text;}
-function labelAccount(id){const a=(state.accounts||[]).find(a=>a.key===id);return a?(a.email||a.name||a.id):id;}
-function time(v){if(!v||v.startsWith('0001'))return '—';return new Date(v).toLocaleString();}
-function policies(){
- formRevision=state.settings.revision;
- $('poll').value=state.settings.poll_minutes;$('lead').value=state.settings.lead_minutes;$('remind').value=state.settings.reminder_hours;
- $('policies').replaceChildren();
- const ids=new Set([...Object.keys(state.settings.accounts),...(state.accounts||[]).map(a=>a.key)]);
- for(const id of ids){
-  const row=el('div',undefined,'card account');row.dataset.account=id;
-  row.append(el('strong',labelAccount(id)));
-  if(!(state.accounts||[]).some(a=>a.key===id))row.append(el('p','账号暂不可见；设置仍保留 / Account missing; policy retained','muted'));
-  const p=state.settings.accounts[id]||{};
-  for(const [field,text] of [['monitor','监控与提醒 / Monitor'],['expiring','到期前兑换 / Before expiry'],['exhausted','周额度耗尽兑换 / Weekly exhausted']]){
-   const l=el('label'),input=el('input');input.type='checkbox';input.dataset.field=field;input.checked=!!p[field];l.append(input,document.createTextNode(text));row.append(l);
-   input.addEventListener('change',()=>{dirty=true;if(field!=='monitor'&&input.checked)row.querySelector('[data-field=monitor]').checked=true;if(field==='monitor'&&!input.checked)row.querySelectorAll('input').forEach(i=>i.checked=false);});
-  }
-  $('policies').append(row);
- }
-}
-function render(){
- $('app').hidden=false;$('login').hidden=true;$('forget').hidden=false;$('version').textContent='v'+state.version;
- $('storage').textContent='已保存版本 / Saved revision '+state.settings.revision+' · '+state.data_dir;
- if(!dirty)policies();
- $('notices').replaceChildren();
- for(const n of state.notices){
-  const box=el('div',undefined,'notice '+n.kind);
-  box.append(el('strong',labelAccount(n.account)+' · '+(n.window||'')),el('p',n.message));
-  if(n.deadline&&!n.deadline.startsWith('0001'))box.append(el('small','剩余 / Remaining '+n.remaining.toFixed(1)+'% · 当前 / Current '+n.rate_per_hour.toFixed(2)+'%/h · 预算 / Budget '+n.target_per_hour.toFixed(2)+'%/h · '+time(n.deadline)));
-  $('notices').append(box);
-  const stamp=n.account+'|'+n.window+'|'+n.kind+'|'+n.deadline;
-  if(notifications&&['slow_down','speed_up','stale'].includes(n.kind)&&(!sent.has(stamp)||Date.now()-sent.get(stamp)>3600000)){new Notification('Codex · '+labelAccount(n.account),{body:n.message,tag:n.account+'|'+n.window});sent.set(stamp,Date.now());}
- }
- if(!state.notices.length)$('notices').append(el('p','启用账号监控后开始采样 / Enable monitoring to begin collecting samples','muted'));
- $('accounts').replaceChildren();
- for(const [id,r] of Object.entries(state.runtime.accounts)){
-  const card=el('div',undefined,'card account');card.append(el('strong',labelAccount(id)),el('p','采样 / Sample: '+time(r.current.at)+' · 重置券 / Credits: '+r.current.count));
-  for(const w of r.current.windows||[]){const box=el('div',undefined,'window');box.append(el('p',w.name+' · '+(w.seconds/3600)+'h · '+w.used.toFixed(1)+'% used'));const bar=el('progress');bar.max=100;bar.value=w.used;box.append(bar,el('small','重置 / Reset: '+time(w.reset_at)));card.append(box);}
-  for(const c of r.current.credits||[])card.append(el('p','重置券到期 / Credit expires: '+time(c.expires_at)));
-  if(r.error)card.append(el('p',r.error,'status'));
-  if(r.attempt){card.append(el('p','兑换状态 / Redemption: '+r.attempt.status));const button=el('button','已人工核对，解除挂起 / Resolve after review');button.type='button';button.onclick=async()=>{if(!confirm('已核对上游兑换记录？此操作将关闭该账号自动兑换。\\nReviewed upstream history? This disables automatic redemption.'))return;try{await api('/resolve','POST',{account:id,request_id:r.attempt.request_id});await load(false);}catch(e){feedback(e.message);}};card.append(button);}
-  $('accounts').append(card);
- }
- $('events').replaceChildren();for(const e of [...(state.runtime.events||[])].reverse().slice(0,40))$('events').append(el('p',time(e.at)+' · '+labelAccount(e.account)+' · '+e.message));
- if(state.health)feedback(state.health);
-}
-async function load(manual=true){
- if(busy)return false;busy=true;const generation=authGeneration;
- try{const data=await api('/status');state=data;render();if(manual&&!state.health)feedback('已刷新 / Refreshed');return true;}
- catch(e){if(!e.stale&&generation===authGeneration)feedback(e.message);return false;}finally{if(generation===authGeneration)busy=false;}
-}
-$('connect').onsubmit=async e=>{e.preventDefault();if(busy)return;authGeneration++;key=$('key').value.trim();$('key').value='';if(await load()){const warning=rememberAuth();if(warning)feedback(warning);}};
-$('forget').onclick=()=>{if(dirty&&!confirm('忘记密钥并放弃未保存修改？ / Forget key and discard edits?'))return;disconnect('已清除此插件保存的密钥 / Saved key removed');};
-$('settings').addEventListener('input',()=>dirty=true);
-$('settings').onsubmit=async e=>{
- e.preventDefault();if(busy||!state)return;
- const generation=authGeneration;
- const next={...state.settings,revision:formRevision,poll_minutes:Number($('poll').value),lead_minutes:Number($('lead').value),reminder_hours:Number($('remind').value),accounts:{}};
- for(const row of $('policies').children){const p={};for(const i of row.querySelectorAll('input'))p[i.dataset.field]=i.checked;next.accounts[row.dataset.account]=p;}
- busy=true;$('save').disabled=true;
- try{state.settings=await api('/settings','PUT',next);dirty=false;feedback('已持久保存 / Saved to disk');}
- catch(e){if(!e.stale)feedback(e.message);}finally{if(generation===authGeneration)busy=false;$('save').disabled=false;}if(key&&generation===authGeneration)await load(false);
-};
-$('refresh').onclick=()=>{if(dirty&&!confirm('放弃未保存修改并重新读取？ / Discard unsaved edits and refresh?'))return;dirty=false;load();};
-$('check').onclick=async()=>{try{await api('/check','POST',{});feedback('巡检已排队 / Check queued');}catch(e){feedback(e.message);}};
-$('notify').onclick=async()=>{if(!('Notification'in window)){feedback('浏览器不支持通知 / Notifications unavailable');return;}notifications=(await Notification.requestPermission())==='granted';feedback(notifications?'提醒已启用，请保持页面打开 / Notifications enabled; keep this page open':'通知未获授权 / Notification permission denied');};
-setInterval(()=>{if(key&&state)load(false);},30000);
-if(key)load(false);
-</script></body></html>
+<section><h2 data-i18n="settingsTitle">持久设置</h2><p class="muted" data-i18n="policyHint">新账号默认关闭。周额度耗尽时可兑换一张，每七天最多一次；到期兑换独立启用。兑换会重置额度窗口。</p>
+<form id="settings" onsubmit="return false"><label><span data-i18n="pollLabel">巡检间隔（分钟）</span><input id="poll" type="number" min="1" max="60" required></label><label><span data-i18n="leadLabel">到期前兑换（分钟）</span><input id="lead" type="number" min="2" max="1440" required></label><label><span data-i18n="reminderLabel">提前提醒（小时）</span><input id="remind" type="number" min="1" max="168" required></label><p class="muted" data-i18n="scheduleHint">兑换提前量至少为巡检间隔的两倍。提醒依赖实测额度变化，不会生成模型请求。</p>
+<div id="policies"></div><div class="toolbar"><button class="primary" id="save" data-i18n="save">保存设置</button><button type="button" id="refresh" data-i18n="refresh">刷新</button><button type="button" id="check" data-i18n="check">立即巡检</button><button type="button" id="notify" data-i18n="notify">启用浏览器提醒</button></div></form><p id="storage" class="muted"></p></section>
+<h2 data-i18n="noticesTitle">当前提醒</h2><p class="muted" data-i18n="notificationHint">浏览器通知需要此页面保持打开；后台兑换不依赖页面。</p><div id="notices"></div>
+<h2 data-i18n="accountsTitle">账号状态</h2><div class="grid" id="accounts"></div><section><h2 data-i18n="activityTitle">操作记录</h2><div id="events"></div></section>
+</div></main></body></html>

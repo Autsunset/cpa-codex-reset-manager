@@ -19,6 +19,12 @@ var dashboard []byte
 //go:embed logo.png
 var logo []byte
 
+//go:embed web/app.js
+var dashboardJS []byte
+
+//go:embed web/style.css
+var dashboardCSS []byte
+
 type managementRequest struct {
 	Method string `json:"Method"`
 	Path   string `json:"Path"`
@@ -199,7 +205,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		for _, r := range [][2]string{{"GET", "/status"}, {"PUT", "/settings"}, {"POST", "/check"}, {"POST", "/resolve"}} {
 			routes = append(routes, map[string]string{"Method": r[0], "Path": "/" + pluginID + r[1]})
 		}
-		return okEnvelope(map[string]any{"routes": routes, "resources": []any{map[string]string{"Path": "/dashboard", "Menu": "Codex 额度管家", "Description": "额度监控、用量提醒与持久重置策略"}, map[string]string{"Path": "/logo.png"}}})
+		return okEnvelope(map[string]any{"routes": routes, "resources": []any{map[string]string{"Path": "/dashboard", "Menu": "Codex 额度管家", "Description": "额度监控、用量提醒与持久重置策略"}, map[string]string{"Path": "/logo.png"}, map[string]string{"Path": "/app.js"}, map[string]string{"Path": "/style.css"}}})
 	case "management.handle":
 		var req managementRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -219,6 +225,19 @@ func (a *service) handle(req managementRequest) managementResponse {
 	a.lifecycle.Lock()
 	defer a.lifecycle.Unlock()
 	if strings.HasPrefix(req.Path, "/v0/resource/plugins/") {
+		if req.Method == "GET" {
+			for path, asset := range map[string]struct {
+				contentType string
+				body        []byte
+			}{
+				"/app.js":    {"text/javascript; charset=utf-8", dashboardJS},
+				"/style.css": {"text/css; charset=utf-8", dashboardCSS},
+			} {
+				if req.Path == "/v0/resource/plugins/"+pluginID+path {
+					return managementResponse{200, http.Header{"Content-Type": {asset.contentType}, "Cache-Control": {"no-store"}, "X-Content-Type-Options": {"nosniff"}}, asset.body}
+				}
+			}
+		}
 		if req.Method == "GET" && req.Path == "/v0/resource/plugins/"+pluginID+"/logo.png" {
 			return managementResponse{200, http.Header{"Content-Type": {"image/png"}, "Cache-Control": {"no-cache"}, "X-Content-Type-Options": {"nosniff"}}, logo}
 		}
