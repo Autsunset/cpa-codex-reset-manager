@@ -12,7 +12,7 @@ const server=http.createServer(async(req,res)=>{
  res.setHeader('Content-Type','application/json');
  if(req.headers.authorization!=='Bearer demo'){res.writeHead(401);res.end('{"error":"unauthorized"}');return;}
  if(req.url.endsWith('/status')){
-  res.end(JSON.stringify({version:'0.1.0',settings,accounts:[{key:'account:demo',email:'demo@example.invalid'}],runtime:{accounts:{},events:[]},notices:[],data_dir:'/persistent/test',health:''}));return;
+  res.end(JSON.stringify({version:'0.1.1',settings,accounts:[{key:'account:demo',email:'demo@example.invalid'}],runtime:{accounts:{},events:[]},notices:[],data_dir:'/persistent/test',health:''}));return;
  }
  if(req.url.endsWith('/settings')){
   let raw='';for await(const chunk of req)raw+=chunk;
@@ -82,5 +82,5 @@ try{
 }finally{
  socket?.close();chrome.kill('SIGTERM');server.close();
  await new Promise(resolve=>{if(chrome.exitCode!==null)return resolve();const t=setTimeout(()=>{chrome.kill('SIGKILL');resolve();},3000);chrome.once('exit',()=>{clearTimeout(t);resolve();});});
- await fs.rm(profile,{recursive:true,force:true});
+ await fs.rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
 }

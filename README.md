@@ -6,7 +6,7 @@ A native CLIProxyAPI plugin with **persistent per-account reset policies** and
 **quota pace reminders**. Its bilingual dashboard shows when to slow down to
 reach the next reset, or when unused quota is likely to remain at reset time.
 
-Version: **0.1.0**. This is an independent plugin, not an upgrade package for
+Version: **0.1.1**. This is an independent plugin, not an upgrade package for
 `codex-auto-reset`. MIT licensed.
 
 ## Features
@@ -17,7 +17,7 @@ Version: **0.1.0**. This is an independent plugin, not an upgrade package for
 - Accounts default to **off**. Monitor, redeem before credit expiry, and redeem
   when the weekly window is exhausted are separate per-account choices.
 - Account policies survive temporary account disappearance and plugin reloads.
-  Account identity uses CPA's upstream account identifier when available,
+  Account identity uses the ChatGPT account ID resolved from credential metadata when available,
   otherwise its credential ID, never the position in an account list.
 - Expiring-credit policy targets the earliest expiring available credit.
   Weekly-exhaustion policy ignores five-hour exhaustion and permits at most
@@ -50,7 +50,7 @@ exhaust; that Magpie routing behavior is not available to this management plugin
 
 Install from the CPA plugin store once the registration is merged, or download
 the platform ZIP from this repository's GitHub Releases and install through CPA.
-The first release is `v0.1.0`.
+The first stable release is `v0.1.1`; `v0.1.0` is a superseded prerelease.
 
 Configure this plugin's `config_yaml`:
 
@@ -135,7 +135,7 @@ Go 1.22+, a C compiler, and CGO are required.
 ```bash
 go test -race ./...
 make build
-make package VERSION=0.1.0
+make package VERSION=0.1.1
 python3 tests/abi_smoke.py dist/cpa-codex-reset-manager.so
 node tests/browser.mjs
 ```

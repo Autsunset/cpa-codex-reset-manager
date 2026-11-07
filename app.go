@@ -137,7 +137,7 @@ func (a *service) poll(s *Store, stop <-chan struct{}) {
 			return
 		default:
 		}
-		if account.Disabled || seen[account.Key] {
+		if account.Disabled || account.UpstreamID == "" || seen[account.Key] {
 			continue
 		}
 		seen[account.Key] = true

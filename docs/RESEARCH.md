@@ -56,6 +56,15 @@ independent of Quota Estimator and does not open its database.
 Confirmed host callback JSON against CPA's `sdk/pluginapi/types.go`:
 `host.auth.list`, `host.auth.get`, and `host.routing.reset_cooldown`.
 
+Important host contract: `Auth.AccountInfo()` returns an OAuth email in the
+`account` field, or an API key for API-key credentials. It is NOT the ChatGPT
+account ID. The stable release resolves identity from credential metadata,
+filters API-key entries, and never exposes the raw host `account` field.
+A second credential read before processing checks that the identity still
+matches. Unresolved identities are not processed. Host-contract regression
+tests cover this; the initial v0.1.0 build was marked prerelease and superseded
+by v0.1.1 before store submission or production deployment.
+
 ## Store
 
 Read the current `router-for-me/CLIProxyAPI-Plugins-Store` README and registry.
