@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPA Codex Reset Manager</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;background:#10151b;color:#e9edf3}
+*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:32px 20px}
+h1{font-size:26px;margin:0}h2{font-size:18px}p{line-height:1.6}.muted,small{color:#a7b2c1}
+header{display:flex;justify-content:space-between;gap:16px;align-items:center}
+section,.card{background:#19212b;border:1px solid #344052;border-radius:12px;padding:20px;margin:20px 0}
+label{display:inline-flex;align-items:center;gap:8px;margin:8px 16px 8px 0}
+input,button{font:inherit;padding:9px;border-radius:6px;border:1px solid #65718a;background:#10151b;color:inherit}
+input[type=number]{width:88px}input[type=password]{width:min(100%,360px)}input[type=checkbox]{width:18px;height:18px}
+button{cursor:pointer}button.primary{background:#bddbff;color:#122033;border:0}button:disabled{opacity:.5;cursor:wait}
+.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.status{white-space:pre-wrap;color:#f0cb80}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.grid .card{margin:0}
+.notice{padding:12px;border-left:3px solid #88b9ee;margin:10px 0;background:#121a23}
+.slow_down,.stale{border-color:#f2b77b}.speed_up{border-color:#83d4b5}
+.account{overflow-wrap:anywhere}.window{padding:10px 0;border-bottom:1px solid #344052}
+progress{width:100%;height:9px;accent-color:#a6caff}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#feedback{min-height:24px}
+@media(max-width:600px){main{padding:20px 12px}header{align-items:flex-start;flex-direction:column}section{padding:14px}}
+</style></head>
+<body><main>
+<header><div><h1>Codex 重置与用量节奏</h1><p class="muted">Persistent resets · Quota pace</p></div><span id="version"></span></header>
+<section id="login"><h2>连接管理接口 / Connect</h2><p class="muted">输入 CPA Management Key。仅保留在当前页面内存中。<br>Key stays in this page's memory.</p><form id="connect"><label>Management Key <input id="key" type="password" required autocomplete="off"></label><button class="primary">连接 / Connect</button></form></section>
+<p id="feedback" class="status" role="status" aria-live="polite"></p>
+<div id="app" hidden>
+<section><h2>持久设置 / Persistent settings</h2><p class="muted">新账号默认关闭。周额度耗尽时可兑换一张，每七天最多一次；到期兑换独立启用。兑换会重置额度窗口。<br>New accounts default to off. Weekly exhaustion allows one redemption per seven days; expiring credits are a separate policy.</p>
+<form id="settings">
+<label>巡检 / Poll (min) <input id="poll" type="number" min="1" max="60" required></label>
+<label>到期前兑换 / Lead (min) <input id="lead" type="number" min="2" max="1440" required></label>
+<label>提前提醒 / Remind (h) <input id="remind" type="number" min="1" max="168" required></label>
+<p class="muted">兑换提前量至少为巡检间隔的两倍。提醒依赖实测额度变化；不会生成模型请求。<br>Lead must be at least twice the poll interval. Predictions use observed quota changes.</p>
+<div id="policies"></div><div class="toolbar"><button class="primary" id="save">保存设置 / Save</button><button type="button" id="refresh">刷新 / Refresh</button><button type="button" id="check">立即巡检 / Check now</button><button type="button" id="notify">启用浏览器提醒 / Notifications</button></div>
+</form><p id="storage" class="muted"></p></section>
+<h2>当前提醒 / Pace reminders</h2><p class="muted">浏览器通知需要此页面保持打开；后台兑换不依赖页面。/ Keep this page open for browser notifications; resets run on the server.</p><div id="notices"></div>
+<h2>账号状态 / Accounts</h2><div class="grid" id="accounts"></div>
+<section><h2>操作记录 / Activity</h2><div id="events"></div></section>
+</div></main>
+<script>
+'use strict';
+const base='/v0/management/cpa-codex-reset-manager';
+const $=id=>document.getElementById(id);
+let key='',state=null,dirty=false,busy=false,notifications=false,formRevision=0;
+const sent=new Map();
+function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
+async function api(path,method='GET',body){
+ const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
+ const data=await r.json();if(!r.ok)throw Error(data.error||String(r.status));return data;
+}
+function feedback(text){$('feedback').textContent=text;}
+function labelAccount(id){const a=(state.accounts||[]).find(a=>a.key===id);return a?(a.email||a.name||a.id):id;}
+function time(v){if(!v||v.startsWith('0001'))return '—';return new Date(v).toLocaleString();}
+function policies(){
+ formRevision=state.settings.revision;
+ $('poll').value=state.settings.poll_minutes;$('lead').value=state.settings.lead_minutes;$('remind').value=state.settings.reminder_hours;
+ $('policies').replaceChildren();
+ const ids=new Set([...Object.keys(state.settings.accounts),...(state.accounts||[]).map(a=>a.key)]);
+ for(const id of ids){
+  const row=el('div',undefined,'card account');row.dataset.account=id;
+  row.append(el('strong',labelAccount(id)));
+  if(!(state.accounts||[]).some(a=>a.key===id))row.append(el('p','账号暂不可见；设置仍保留 / Account missing; policy retained','muted'));
+  const p=state.settings.accounts[id]||{};
+  for(const [field,text] of [['monitor','监控与提醒 / Monitor'],['expiring','到期前兑换 / Before expiry'],['exhausted','周额度耗尽兑换 / Weekly exhausted']]){
+   const l=el('label'),input=el('input');input.type='checkbox';input.dataset.field=field;input.checked=!!p[field];l.append(input,document.createTextNode(text));row.append(l);
+   input.addEventListener('change',()=>{dirty=true;if(field!=='monitor'&&input.checked)row.querySelector('[data-field=monitor]').checked=true;if(field==='monitor'&&!input.checked)row.querySelectorAll('input').forEach(i=>i.checked=false);});
+  }
+  $('policies').append(row);
+ }
+}
+function render(){
+ $('app').hidden=false;$('login').hidden=true;$('version').textContent='v'+state.version;
+ $('storage').textContent='已保存版本 / Saved revision '+state.settings.revision+' · '+state.data_dir;
+ if(!dirty)policies();
+ $('notices').replaceChildren();
+ for(const n of state.notices){
+  const box=el('div',undefined,'notice '+n.kind);
+  box.append(el('strong',labelAccount(n.account)+' · '+(n.window||'')),el('p',n.message));
+  if(n.deadline&&!n.deadline.startsWith('0001'))box.append(el('small','剩余 / Remaining '+n.remaining.toFixed(1)+'% · 当前 / Current '+n.rate_per_hour.toFixed(2)+'%/h · 预算 / Budget '+n.target_per_hour.toFixed(2)+'%/h · '+time(n.deadline)));
+  $('notices').append(box);
+  const stamp=n.account+'|'+n.window+'|'+n.kind+'|'+n.deadline;
+  if(notifications&&['slow_down','speed_up','stale'].includes(n.kind)&&(!sent.has(stamp)||Date.now()-sent.get(stamp)>3600000)){new Notification('Codex · '+labelAccount(n.account),{body:n.message,tag:n.account+'|'+n.window});sent.set(stamp,Date.now());}
+ }
+ if(!state.notices.length)$('notices').append(el('p','启用账号监控后开始采样 / Enable monitoring to begin collecting samples','muted'));
+ $('accounts').replaceChildren();
+ for(const [id,r] of Object.entries(state.runtime.accounts)){
+  const card=el('div',undefined,'card account');card.append(el('strong',labelAccount(id)),el('p','采样 / Sample: '+time(r.current.at)+' · 重置券 / Credits: '+r.current.count));
+  for(const w of r.current.windows||[]){const box=el('div',undefined,'window');box.append(el('p',w.name+' · '+(w.seconds/3600)+'h · '+w.used.toFixed(1)+'% used'));const bar=el('progress');bar.max=100;bar.value=w.used;box.append(bar,el('small','重置 / Reset: '+time(w.reset_at)));card.append(box);}
+  for(const c of r.current.credits||[])card.append(el('p','重置券到期 / Credit expires: '+time(c.expires_at)));
+  if(r.error)card.append(el('p',r.error,'status'));
+  if(r.attempt){card.append(el('p','兑换状态 / Redemption: '+r.attempt.status));const button=el('button','已人工核对，解除挂起 / Resolve after review');button.type='button';button.onclick=async()=>{if(!confirm('已核对上游兑换记录？此操作将关闭该账号自动兑换。\\nReviewed upstream history? This disables automatic redemption.'))return;try{await api('/resolve','POST',{account:id,request_id:r.attempt.request_id});await load(false);}catch(e){feedback(e.message);}};card.append(button);}
+  $('accounts').append(card);
+ }
+ $('events').replaceChildren();for(const e of [...(state.runtime.events||[])].reverse().slice(0,40))$('events').append(el('p',time(e.at)+' · '+labelAccount(e.account)+' · '+e.message));
+ if(state.health)feedback(state.health);
+}
+async function load(manual=true){
+ if(busy)return;busy=true;
+ try{const data=await api('/status');state=data;render();if(manual&&!state.health)feedback('已刷新 / Refreshed');}
+ catch(e){feedback(e.message);}finally{busy=false;}
+}
+$('connect').onsubmit=async e=>{e.preventDefault();key=$('key').value;$('key').value='';await load();};
+$('settings').addEventListener('input',()=>dirty=true);
+$('settings').onsubmit=async e=>{
+ e.preventDefault();if(busy||!state)return;
+ const next={...state.settings,revision:formRevision,poll_minutes:Number($('poll').value),lead_minutes:Number($('lead').value),reminder_hours:Number($('remind').value),accounts:{}};
+ for(const row of $('policies').children){const p={};for(const i of row.querySelectorAll('input'))p[i.dataset.field]=i.checked;next.accounts[row.dataset.account]=p;}
+ busy=true;$('save').disabled=true;
+ try{state.settings=await api('/settings','PUT',next);dirty=false;feedback('已持久保存 / Saved to disk');}
+ catch(e){feedback(e.message);}finally{busy=false;$('save').disabled=false;}await load(false);
+};
+$('refresh').onclick=()=>{if(dirty&&!confirm('放弃未保存修改并重新读取？ / Discard unsaved edits and refresh?'))return;dirty=false;load();};
+$('check').onclick=async()=>{try{await api('/check','POST',{});feedback('巡检已排队 / Check queued');}catch(e){feedback(e.message);}};
+$('notify').onclick=async()=>{if(!('Notification'in window)){feedback('浏览器不支持通知 / Notifications unavailable');return;}notifications=(await Notification.requestPermission())==='granted';feedback(notifications?'提醒已启用，请保持页面打开 / Notifications enabled; keep this page open':'通知未获授权 / Notification permission denied');};
+setInterval(()=>{if(key&&state)load(false);},30000);
+</script></body></html>
